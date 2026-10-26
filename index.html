@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gestor de Prompts</title>
+<meta name="theme-color" content="#14213d">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#eef1f4;--surface:#fff;--ink:#14213d;--muted:#5c6b82;--line:#d5dce6;--accent:#1f6f54;--accent-ink:#fff;--chip:#f6d66b;--chip-ink:#4a3600;--danger:#b3261e}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1624;--surface:#182234;--ink:#e8edf5;--muted:#93a1b8;--line:#2a3750;--accent:#4fc19a;--accent-ink:#06261b;--chip:#7a5f12;--chip-ink:#ffe9a6;--danger:#ff8a80}}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:5;display:flex;gap:12px;align-items:center;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;background:var(--bg);border-bottom:1px solid var(--line)}
+h1{font-size:1.15rem;margin:0;font-weight:700;letter-spacing:-.01em;overflow-wrap:anywhere}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:10px 14px;min-height:44px}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.ghost{background:transparent}
+.danger{color:var(--danger)}
+main{max-width:640px;margin:0 auto;padding:14px}
+label{display:block;font-weight:600;font-size:.9rem;margin:0 0 12px}
+input,textarea,select{display:block;width:100%;margin-top:6px;font:inherit;font-weight:400;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink)}
+textarea{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.95rem;resize:vertical}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.compose .primary{width:100%;margin-top:4px}
+.compose .ghost{margin:-4px 0 14px}
+.search{display:flex;gap:8px;margin-bottom:14px}
+.search input{margin:0;flex:1}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.ch{display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.card h2{font-size:1.02rem;margin:0;overflow-wrap:anywhere}
+time{color:var(--muted);font-size:.8rem;white-space:nowrap}
+.body{white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.88rem;margin:10px 0;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+.body.full{display:block}
+mark{background:var(--chip);color:var(--chip-ink);border-radius:5px;padding:0 4px;font-weight:700}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.np{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.np[hidden]{display:none}
+.np input{margin:0;flex:1 1 160px}
+.hint,.empty{color:var(--muted)}
+.flash{animation:fl 1.8s}
+@keyframes fl{0%,60%{box-shadow:0 0 0 4px var(--accent)}100%{box-shadow:0 0 0 4px transparent}}
+@media(prefers-reduced-motion:reduce){.flash{animation:none;outline:3px solid var(--accent)}#drawer{transition:none}}
+#drawer{position:fixed;inset:0 auto 0 0;width:min(320px,86vw);background:var(--surface);border-right:1px solid var(--line);transform:translateX(-100%);transition:transform .2s;z-index:20;overflow:auto;padding:calc(14px + env(safe-area-inset-top)) 14px 14px}
+.open #drawer{transform:none}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:15}
+.open #scrim{display:block}
+#drawer h3{margin:16px 0 6px;font-size:.95rem}
+#folders{list-style:none;margin:8px 0;padding:0}
+#folders li{display:flex;gap:6px;margin-bottom:6px}
+.item{flex:1;text-align:left;display:flex;justify-content:space-between;gap:8px;width:100%}
+.item.on{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.item small{color:var(--muted)}
+.x{padding:0 12px;color:var(--muted)}
+#ff{display:flex;gap:8px;margin:10px 0 6px}
+#ff input{margin:0}
+label.btn{text-align:center;border:1px solid var(--line);border-radius:10px;padding:10px;font-weight:400;cursor:pointer;margin:8px 0 0}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;opacity:0;pointer-events:none;transition:.2s;z-index:30;max-width:90vw}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<header><button id="menu" aria-label="Abrir carpetas">☰</button><h1 id="title">Nuevo prompt</h1></header>
+<aside id="drawer" aria-label="Carpetas">
+  <button class="item primary" id="navnew">Nuevo prompt</button>
+  <h3>Carpetas</h3>
+  <ul id="folders"></ul>
+  <form id="ff"><input id="fname" placeholder="Nombre de la carpeta" aria-label="Nombre de la carpeta" autocomplete="off"><button class="ghost">Crear</button></form>
+  <h3>Nombre predeterminado</h3>
+  <input id="defname" placeholder="Ej.: Juan Perez el técnico" aria-label="Nombre predeterminado para {NAME}" autocomplete="off">
+  <h3>Respaldo</h3>
+  <button class="item ghost" id="exp">Exportar respaldo</button>
+  <label class="btn">Importar respaldo<input type="file" id="imp" accept="application/json" hidden></label>
+</aside>
+<div id="scrim"></div>
+<main id="main"></main>
+<div id="toast" role="status"></div>
+<script>
+const KEY='gestor-prompts-v1';
+let S={folders:[],prompts:[],defName:''};
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+let view={t:'new'},draft={t:'',n:'',f:''},tt;
+const $=s=>document.querySelector(s);
+const esc=t=>t.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const fill=(t,n)=>n?t.split('{NAME}').join(n):t;
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('No se pudo guardar en este navegador')}};
+function toast(m){const e=$('#toast');e.textContent=m;e.classList.add('on');clearTimeout(tt);tt=setTimeout(()=>e.classList.remove('on'),2400)}
+async function copy(text){
+  try{await navigator.clipboard.writeText(text)}
+  catch(e){
+    const a=document.createElement('textarea');a.value=text;a.style.cssText='position:fixed;opacity:0';
+    document.body.appendChild(a);a.select();let ok=false;
+    try{ok=document.execCommand('copy')}catch(_){}
+    a.remove();if(!ok)return toast('No se pudo copiar');
+  }
+  toast('Copiado');
+}
+const drawer=o=>document.body.classList.toggle('open',o);
+
+function card(p){
+  const has=p.text.includes('{NAME}');
+  const d=new Date(p.created).toLocaleDateString('es-AR',{day:'2-digit',month:'short',year:'numeric'});
+  return `<article class="card" id="c${p.id}">
+<div class="ch"><h2>${esc(p.name)}</h2><time>${d}</time></div>
+<div class="body" data-tog="1">${esc(p.text).split('{NAME}').join('<mark>{NAME}</mark>')}</div>
+<div class="row"><button class="primary" data-copy="${p.id}">Copiar</button>${has?`<button class="ghost" data-nm="${p.id}">Cambiar {NAME}</button>`:''}<button class="ghost danger" data-delp="${p.id}">Eliminar</button></div>
+${has?`<div class="np" id="np${p.id}" hidden><input placeholder="Nombre para {NAME}" aria-label="Nombre para {NAME}" value="${esc(S.defName)}"><button class="primary" data-copyn="${p.id}">Copiar con este nombre</button></div>`:''}
+</article>`;
+}
+
+function renderFolders(){
+  $('#folders').innerHTML=S.folders.map(f=>`<li><button class="item${view.t==='folder'&&view.id===f.id?' on':''}" data-open="${f.id}">${esc(f.name)}<small>${S.prompts.filter(p=>p.folderId===f.id).length}</small></button><button class="x" data-delf="${f.id}" aria-label="Eliminar carpeta ${esc(f.name)}">✕</button></li>`).join('')||'<li class="empty">Todavía no hay carpetas.</li>';
+}
+
+function render(){
+  renderFolders();
+  $('#defname').value=S.defName;
+  const m=$('#main');
+  if(view.t==='folder'){
+    const f=S.folders.find(x=>x.id===view.id);
+    if(!f){view={t:'new'};return render()}
+    $('#title').textContent=f.name;
+    const ps=S.prompts.filter(p=>p.folderId===f.id).sort((a,b)=>b.created-a.created);
+    m.innerHTML=`<form id="sf" class="search"><input id="q" placeholder="Buscar prompt por nombre" aria-label="Buscar prompt por nombre" autocomplete="off"><button class="primary">Buscar</button></form>`+
+      (ps.length?ps.map(card).join(''):`<p class="hint">Esta carpeta está vacía. Escribí un prompt en “Nuevo prompt” y elegí esta carpeta al guardarlo.</p>`);
+  }else{
+    $('#title').textContent='Nuevo prompt';
+    if(!draft.f&&S.folders[0])draft.f=S.folders[0].id;
+    m.innerHTML=`<form id="nf" class="compose">
+<label>Prompt<textarea id="pt" rows="9" placeholder="Escribí tu prompt. Usá {NAME} donde quieras que cambie el nombre.">${esc(draft.t)}</textarea></label>
+<button type="button" class="ghost" id="ins">Insertar {NAME}</button>
+<label>Nombre del prompt<input id="pn" autocomplete="off" value="${esc(draft.n)}"></label>
+<label>Carpeta<select id="pf">${S.folders.map(f=>`<option value="${f.id}"${f.id===draft.f?' selected':''}>${esc(f.name)}</option>`).join('')}</select></label>
+${S.folders.length?'':'<p class="hint">Primero creá una carpeta desde el menú ☰.</p>'}
+<button class="primary">Guardar prompt</button></form>`;
+  }
+}
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button,[data-tog]');if(!t)return;const d=t.dataset;
+  if(t.id==='menu')return drawer(true);
+  if(t.id==='navnew'){view={t:'new'};drawer(false);return render()}
+  if(d.open){view={t:'folder',id:d.open};drawer(false);return render()}
+  if(d.delf){
+    const f=S.folders.find(x=>x.id===d.delf);
+    if(f&&confirm(`¿Eliminar la carpeta “${f.name}” y todos sus prompts?`)){
+      S.folders=S.folders.filter(x=>x.id!==f.id);S.prompts=S.prompts.filter(p=>p.folderId!==f.id);
+      if(draft.f===f.id)draft.f='';if(view.id===f.id)view={t:'new'};save();render();
+    }
+    return;
+  }
+  if(d.copy){const p=S.prompts.find(x=>x.id===d.copy);return copy(fill(p.text,S.defName))}
+  if(d.nm){const n=$('#np'+d.nm);n.hidden=!n.hidden;if(!n.hidden)n.querySelector('input').focus();return}
+  if(d.copyn){const p=S.prompts.find(x=>x.id===d.copyn);return copy(fill(p.text,$('#np'+d.copyn+' input').value.trim()))}
+  if(d.delp){
+    const p=S.prompts.find(x=>x.id===d.delp);
+    if(p&&confirm(`¿Eliminar el prompt “${p.name}”?`)){S.prompts=S.prompts.filter(x=>x.id!==p.id);save();render()}
+    return;
+  }
+  if(d.tog!==undefined)return t.classList.toggle('full');
+  if(t.id==='ins'){const a=$('#pt');a.setRangeText('{NAME}',a.selectionStart,a.selectionEnd,'end');draft.t=a.value;a.focus()}
+  if(t.id==='exp'){
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'}));
+    a.download='respaldo-prompts.json';a.click();
+  }
+});
+$('#scrim').onclick=()=>drawer(false);
+
+document.addEventListener('input',e=>{
+  const i=e.target.id;
+  if(i==='pt')draft.t=e.target.value;
+  if(i==='pn')draft.n=e.target.value;
+  if(i==='defname'){S.defName=e.target.value.trim();save()}
+});
+document.addEventListener('change',e=>{if(e.target.id==='pf')draft.f=e.target.value});
+
+document.addEventListener('submit',e=>{
+  e.preventDefault();const id=e.target.id;
+  if(id==='ff'){
+    const n=$('#fname').value.trim();if(!n)return;
+    if(S.folders.some(f=>f.name===n))return toast('Ya existe una carpeta con ese nombre');
+    S.folders.push({id:uid(),name:n});$('#fname').value='';save();render();return toast('Carpeta creada');
+  }
+  if(id==='nf'){
+    const text=$('#pt').value.trim(),name=$('#pn').value.trim(),fid=$('#pf').value;
+    if(!fid){drawer(true);return toast('Primero creá una carpeta')}
+    if(!text)return toast('Escribí el prompt');
+    if(!name)return toast('Poné un nombre al prompt');
+    if(S.prompts.some(p=>p.folderId===fid&&p.name===name)){$('#pn').focus();return toast('Ya hay un prompt con ese nombre en la carpeta')}
+    S.prompts.push({id:uid(),folderId:fid,name,text:$('#pt').value,created:Date.now()});
+    const fn=S.folders.find(f=>f.id===fid).name;
+    draft={t:'',n:'',f:fid};save();render();return toast(`Guardado en “${fn}”`);
+  }
+  if(id==='sf'){
+    const q=$('#q').value.trim().toLowerCase();if(!q)return;
+    const ps=S.prompts.filter(p=>p.folderId===view.id);
+    const hit=ps.find(p=>p.name.toLowerCase()===q)||ps.find(p=>p.name.toLowerCase().includes(q));
+    if(!hit)return toast('No hay un prompt con ese nombre en esta carpeta');
+    const el=$('#c'+hit.id);el.scrollIntoView({block:'center'});
+    el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');
+  }
+});
+
+$('#imp').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{
+    const j=JSON.parse(await f.text());
+    if(!Array.isArray(j.folders)||!Array.isArray(j.prompts))throw 0;
+    if(!confirm('Esto reemplaza los datos actuales por los del respaldo. ¿Continuar?'))return;
+    S={folders:j.folders,prompts:j.prompts,defName:j.defName||''};
+    view={t:'new'};draft={t:'',n:'',f:''};save();render();drawer(false);toast('Respaldo importado');
+  }catch(_){toast('El archivo no es un respaldo válido')}
+  e.target.value='';
+};
+
+if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('./service-worker.js').catch(()=>{}));
+render();
+</script>
+</body>
+</html>
